@@ -3,8 +3,9 @@ const express = require('express');
 const cors = require('cors');
 const { port, apiToken } = require('./config/env');
 const { getFirstProducto } = require('./services/pos.service');
-const zebraSvc = require('./services/zebra.service');
-
+//const zebraSvc = require('./services/zebra.service');
+const { printEtiquetaOferta } = require("./services/zebra.service");
+const mesonRoutes = require('./routes/meson.routes');
 const app = express();
 
 app.use(cors());
@@ -19,6 +20,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Monta rutas del mesón (incluye /api/meson/excel/* y /api/meson/*)
+app.use(mesonRoutes);
 
 // Healthcheck
 app.get('/health', (_req, res) => {
@@ -45,9 +49,9 @@ app.get('/api/pos/producto-demo', async (req, res) => {
 app.post('/api/pos/print-demo', async (_req, res) => {
   try {
     const producto = await getFirstProducto();
-    if (!producto) {
-      return res.status(404).json({ message: 'No se encontraron productos' });
-    }
+    if (!producto) return res.status(404).json({ message: "No se encontraron productos" });
+    await printEtiquetaOferta(producto);
+    res.status(201).json({ status: "printed", producto });
 
     // Validación defensiva para evitar TypeError si el export falla
     if (!zebraSvc || typeof zebraSvc.printEtiquetaOferta !== 'function') {

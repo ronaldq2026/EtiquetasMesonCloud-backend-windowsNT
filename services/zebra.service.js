@@ -6,14 +6,14 @@ const path = require('path');
 const { execFile } = require('child_process');
 const printerConfig = require('../config/printer');
 
-// Textos base (ajústalos a tus .CH si lo necesitas)
+// etiquetas / textos (ajusta según tus .CH)
 const LABELS = {
   LBL_037: 'OFERTA',
   LBL_038: 'HASTA ',
   SIMBOLO_MONEDA: '$',
 };
 
-// Genera EPL
+// ---- genera EPL equivalente al código VFP que mostraste
 function buildEplEtiqueta({
   descripIzq,
   descripDer,
@@ -143,7 +143,7 @@ async function sendEtiqueta(epl) {
   throw new Error(`Modo de impresión no soportado: ${printerConfig.mode}`);
 }
 
-// Arma y envía etiqueta de oferta
+// ---- usa un producto de posmapre y arma la etiqueta
 async function printEtiquetaOferta(producto) {
   const payload = {
     descripIzq:
@@ -175,8 +175,6 @@ async function printEtiquetaOferta(producto) {
 
 module.exports = {
   printEtiquetaOferta,
-  // Si luego quieres testear por separado, puedes exportar también:
-  // buildEplEtiqueta,
-  // sendEplWindowsRaw,
-  // sendEplTcp,
+  buildEplEtiqueta,
+  sendEtiqueta,
 };
