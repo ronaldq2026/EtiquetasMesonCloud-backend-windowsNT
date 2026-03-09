@@ -92,9 +92,37 @@ router.get('/api/meson/excel/enrich/:sku', async (req, res) => {
 
     // 2) cruzar contra POSDPOFE y ELEGIR EL PRIMERO
     await ensureCache();
-    // Si hay varios con mismo sku, filtra y elige el primero (orden natural POSDPOFE)
-    const matches = cacheDPOFE.filter((r) => r.sku === skuNum);
-    const chosen = matches.length > 0 ? matches[0] : null; // 👈 PRIMERO
+	console.log("Registros POSDPOFE:", cacheDPOFE?.length);
+	console.log("SKU buscado:", skuNum);
+    
+	// Si hay varios con mismo sku, filtra menor precio
+	const matches = cacheDPOFE.filter(
+	  (r) => r && r.sku && String(r.sku) === String(skuNum)
+	);
+
+	let chosen = null;
+
+	if (matches.length > 0) {
+	  chosen = matches.reduce((best, current) => {
+
+		// precio válido del registro actual
+		const precioActual =
+		  Number(current.precioOferta) ||
+		  Number(current.precioNormal) ||
+		  Number(current.precioUnitario) ||
+		  Infinity;
+
+		// precio válido del mejor hasta ahora
+		const precioBest =
+		  Number(best?.precioOferta) ||
+		  Number(best?.precioNormal) ||
+		  Number(best?.precioUnitario) ||
+		  Infinity;
+
+		return precioActual < precioBest ? current : best;
+
+	  }, matches[0]);
+	}
 
     if (!chosen) {
       return res.json({
@@ -120,53 +148,54 @@ router.get('/api/meson/excel/enrich/:sku', async (req, res) => {
 });
 
 /**
- * ===== Export HTML / Imprimir directo =====
- * POST /api/print/export-html
- * body: { product, config, mode?: 'return-zpl' | 'print-direct' }
- *
- * - En DEV (laptop): si mode === 'return-zpl' -> devuelve archivo .epl
+ * ===== Export HTML / Imprimir directo ===== 
  * - En PROD (server_760): forzamos impresión directa aunque pidan return-zpl
  */
 router.post('/api/print/export-html', async (req, res) => {
   try {
-    const { product, config, mode } = req.body || {};
+    const { product, config } = req.body || {};
+
     if (!product || !config) {
       return res.status(400).json({ ok: false, message: 'Faltan product/config' });
     }
 
-    const { buildEplEtiqueta, sendEtiqueta } = require('../services/zebra.service');
+    const { buildZplEtiqueta, sendEtiqueta } = require('../services/zebra.service');
 
-    // Mapeo mínimo; ajusta a tu payload real
-    const epl = buildEplEtiqueta({
-      descripIzq: product?.nombre ?? '',
-      descripDer: product?.descripcion ?? '',
-      precio: String(product?.precioOferta ?? product?.precioNormal ?? ''),
-      barra: product?.codigoBarras ?? '',
-      fechaTermino: product?.oferta?.vigenciaFin ?? '',
-      codigo: product?.codigo ?? '',
-      comision: '',
+    const payload = {
+      precioAntes: product?.precioNormal ?? '',
+      precioAhora: product?.precioOferta ?? '',
+      producto: product?.nombre ?? product?.producto ?? '',
+      subtitulo: product?.descripcion ?? '',
+      sku: product?.sku ?? product?.codigo ?? '',
+      codigoBarras: product?.codigoBarras ?? '',
+      cantidad: config?.cantidad ?? 1,
+
+      precioNormal: product?.precioNormal,
+      precioOferta: product?.precioOferta,
+      descuentoPct: product?.descuentoPct,
+
+      pr: config?.pr ?? 2,
+      md: config?.md ?? 5,
+      barcodeHeight: config?.barcodeHeight ?? 70,
+    };
+
+    const zpl = buildZplEtiqueta(payload);
+
+    const result = await sendEtiqueta(zpl);
+
+    return res.json({
+      ok: true,
+      printed: true,
+      result
     });
 
-    // 🔒 Hardening: en producción, NUNCA devolvemos archivo .epl
-    const isProd = process.env.NODE_ENV === 'production';
-    if (mode === 'return-zpl' && isProd) {
-      const result = await sendEtiqueta(epl);
-      return res.json({ ok: true, result });
-    }
-
-    // DEV: devolver archivo si así lo piden
-    if (mode === 'return-zpl') {
-      res.set('Content-Type', 'text/plain; charset=utf-8');
-      res.set('Content-Disposition', `attachment; filename="etiqueta-${Date.now()}.epl"`);
-      return res.status(200).send(epl);
-    }
-
-    // default / print-direct: imprimir
-    const result = await sendEtiqueta(epl);
-    return res.json({ ok: true, result });
   } catch (err) {
     console.error('[print/export-html] error:', err?.stack ?? err);
-    return res.status(500).json({ ok: false, message: 'Error exportando/imprimiendo etiqueta' });
+    return res.status(500).json({
+      ok: false,
+      message: 'Error exportando/imprimiendo etiqueta',
+      error: err.message
+    });
   }
 });
 
