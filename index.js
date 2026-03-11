@@ -12,11 +12,14 @@ const app = express(); // ← DECLARAR UNA SOLA VEZ
 const paiRoutes = require("./routes/pai.routes");
 const posService = require("./services/pos.service");
 
+const productsRoutes = require('./routes/products.routes');
+
+
 
 app.use(cors());
 app.use(express.json());
 
-// --- Auth por token (si API_TOKEN está seteado)
+// 🔐 middleware auth
 app.use((req, res, next) => {
   const token = req.headers["x-api-token"];
   if (!apiToken) return next();
@@ -25,6 +28,8 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+app.use('/api/products', productsRoutes);
 
 // --- Rutas del mesón (Excel/POSDPOFE) — una sola vez
 app.use(mesonRoutes);

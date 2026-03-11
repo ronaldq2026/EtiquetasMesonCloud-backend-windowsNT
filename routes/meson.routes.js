@@ -1,7 +1,8 @@
 // routes/meson.routes.js
 const express = require('express');
 const multer = require('multer');
-const { getAllDPOFE } = require('../services/pos.service');
+const { getProductoPorSku, getProductosPorSku } = require('../services/pos.service');
+const { toNumericSku, findProductBySkuLowestPrice } = require('../utils/sku');
 const {
   parseAndBuildAllowlist,
   getSummary,
@@ -11,23 +12,24 @@ const {
 
 const router = express.Router();
 
-// ===== util: SKU numérico (sin ceros) =====
-function toNumericSku(value) {
-  if (value == null) return '';
-  let s = String(value).trim().replace(/\D+/g, ''); // sólo dígitos
-  s = s.replace(/^0+/, ''); // quita ceros a la izquierda
-  return s; // string numérica
-}
-
-// ===== cache DPOFE =====
-let cacheDPOFE = null;
-async function ensureCache() {
-  if (!cacheDPOFE) {
-    console.log('[MESON] Cargando POSDPOFE...');
-    cacheDPOFE = await getAllDPOFE(); // sku ya mapeado a numérico en pos.service
-    console.log('[MESON] Registros cargados:', cacheDPOFE.length);
+// ===== enrich endpoint - busca el producto completo (MAPRE + DPOFE) =====
+router.get('/api/meson/excel/enrich/:sku', async (req, res) => {
+  try {
+    const { sku } = req.params;
+    
+    // Usa getProductoPorSku que combina MAPRE + DPOFE
+    const result = await getProductoPorSku(sku);
+    
+    console.log('[ENRICH] SKU:', sku);
+    console.log('[ENRICH] Encontrado:', result.ok);
+    
+    return res.json(result);
+  } catch (err) {
+    console.error('[ENRICH] Error:', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
   }
-}
+});
+
 
 // ===== upload Excel =====
 const upload = multer({
@@ -90,39 +92,14 @@ router.get('/api/meson/excel/enrich/:sku', async (req, res) => {
       });
     }
 
-    // 2) cruzar contra POSDPOFE y ELEGIR EL PRIMERO
+    // 2) cruzar contra POSDPOFE y ELEGIR EL DE MENOR PRECIO
     await ensureCache();
-	console.log("Registros POSDPOFE:", cacheDPOFE?.length);
-	console.log("SKU buscado:", skuNum);
-    
-	// Si hay varios con mismo sku, filtra menor precio
-	const matches = cacheDPOFE.filter(
-	  (r) => r && r.sku && String(r.sku) === String(skuNum)
-	);
+    console.log("[ENRICH] Registros POSDPOFE:", cacheDPOFE?.length);
+    console.log("[ENRICH] SKU buscado:", skuNum);
 
-	let chosen = null;
-
-	if (matches.length > 0) {
-	  chosen = matches.reduce((best, current) => {
-
-		// precio válido del registro actual
-		const precioActual =
-		  Number(current.precioOferta) ||
-		  Number(current.precioNormal) ||
-		  Number(current.precioUnitario) ||
-		  Infinity;
-
-		// precio válido del mejor hasta ahora
-		const precioBest =
-		  Number(best?.precioOferta) ||
-		  Number(best?.precioNormal) ||
-		  Number(best?.precioUnitario) ||
-		  Infinity;
-
-		return precioActual < precioBest ? current : best;
-
-	  }, matches[0]);
-	}
+    // Usa la función que busca y retorna el de menor precio
+    const chosen = findProductBySkuLowestPrice(cacheDPOFE, skuNum);
+    console.log("[ENRICH] Producto encontrado:", chosen ? 'SÍ' : 'NO');
 
     if (!chosen) {
       return res.json({
