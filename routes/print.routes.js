@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { buildZplEtiqueta, sendEtiqueta } = require('../services/zebra.service');
+const axios = require("axios");
 
 function pick(obj, keys) {
   const out = {};
@@ -21,6 +22,36 @@ router.post('/api/labels/print', async (req, res) => {
   } catch (err) {
     console.error('[labels/print] error:', err);
     return res.status(500).json({ ok: false, message: 'Error imprimiendo etiqueta' });
+  }
+});
+
+//preview
+router.post('/api/labels/preview', async (req, res) => {
+  try {
+
+    const payload = req.body;
+
+    const zpl = buildZplEtiqueta(payload);
+
+    const response = await axios.post(
+      "http://api.labelary.com/v1/printers/8dpmm/labels/2x1.5/0/",
+      zpl,
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        responseType: "arraybuffer"
+      }
+    );
+
+    res.set("Content-Type", "image/png");
+    return res.send(response.data);
+
+  } catch (err) {
+
+    console.error("preview error", err);
+    res.status(500).json({ ok:false });
+
   }
 });
 

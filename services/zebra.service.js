@@ -1,176 +1,262 @@
-// services/zebra.service.js — ZPL para ZD220t (203 dpi)
+// services/zebra.service.js
+// Zebra ZD220t - 203dpi
+
 const net = require('net');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
-const printerConfig = require('../config/printer'); // usa mode/sharePath/host/port
 
-// --- helpers ---
+// ------------------------------------------------
+// Helpers
+// ------------------------------------------------
+
 function toNumber(val) {
-  if (val == null) return null;
-  const s = String(val).replace(/[^\d,.\-]/g, '').replace(/\./g, '').replace(',', '.');
+  if (val === null || val === undefined) return null;
+
+  const s = String(val)
+    .replace(/[^\d,.\-]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
-function fmtCLP(val) {
-  if (val == null) return '';
-  const n = typeof val === 'number' ? val : toNumber(val);
-  if (n == null) return String(val);
-  return `$${n.toLocaleString('es-CL')}`;
+
+function formatDateCL(dateStr) {
+
+  if (!dateStr) return '';
+
+  const d = new Date(dateStr);
+
+  const day = String(d.getDate()).padStart(2,'0');
+  const month = String(d.getMonth()+1).padStart(2,'0');
+  const year = d.getFullYear();
+
+  return day + '/' + month + '/' + year;
 }
 
-/**
- * Builder ZPL 50x38 mm (203 dpi)
- * Requiere: precioAntes, precioAhora, producto, subtitulo, sku, codigoBarras, cantidad
- * Opcionales: precioNormal, precioOferta, descuentoPct, showResumenOferta (boolean)
- * Knobs: pr (velocidad), md (oscuridad), barcodeHeight
- */
-function buildZplEtiqueta({
-  precioAntes,
-  precioAhora,
-  producto,
-  subtitulo,
-  sku,
-  codigoBarras,
-  cantidad,
+function fmtCLP(val) {
 
-  // opcionales (resumen oferta)
-  precioNormal,
-  precioOferta,
-  descuentoPct,
-  showResumenOferta = false,
+  if (val === null || val === undefined) return '$0';
 
-  // knobs
-  pr = 2,
-  md = 5,
-  barcodeHeight = 70,
-}) {
-  const nAntes = toNumber(precioAntes);
-  const nAhora = toNumber(precioAhora);
-  let pct = descuentoPct != null ? Number(descuentoPct) : null;
-  if (pct == null && nAntes && nAhora && nAntes > 0) {
-    pct = Math.round((1 - nAhora / nAntes) * 100);
-  }
+  const n = typeof val === 'number' ? val : toNumber(val);
+  if (n === null) return val;
 
-  const resumenLines = [];
-  if (showResumenOferta) {
-    const pn = precioNormal != null ? precioNormal : precioAntes;
-    const po = precioOferta != null ? precioOferta : precioAhora;
-    resumenLines.push(`Precio normal: ${fmtCLP(pn)}`);
-    resumenLines.push(`Precio oferta: ${fmtCLP(po)}`);
-    if (pct != null && Number.isFinite(pct)) resumenLines.push(`Descuento: ${pct}%`);
-  }
-  const yResumenBase = 245; // debajo del barcode, dentro de 300 dots de alto
+  return '$' + n.toLocaleString('es-CL');
+}
 
-  const zpl = `
-^XA
-^CI28
-^PR${pr}
-^MD${md}
+// ------------------------------------------------
+// ZPL Builder
+// ------------------------------------------------
 
-^PW400
-^LL300
+function buildZplEtiqueta(data) {
 
-^FO10,10^A0N,22,22^FDANTES:^FS
-^FO10,40^A0N,22,22^FDAHORA:^FS
+  const precioAntes = data.precioAntes;
+  const precioAhora = data.precioAhora;
+  const producto = data.producto;
+  const sku = data.sku;
+  const ean13 = data.ean13;
+  const codigoBarras = data.codigoBarras;
+  const precioUnitario = data.precioUnitario;
+  const cantidad = data.cantidad || 1;
+  const precioNormal = data.precioNormal;
+  const precioOferta = data.precioOferta;
+  const pr = data.pr || 2;
+  const md = data.md || 5;
+  const barcodeHeight = data.barcodeHeight || 60;
 
-^FO120,10^A0N,28,28^FD${precioAntes}^FS
-^FO120,40^A0N,40,40^FD${precioAhora}^FS
+  let validoHasta = formatDateCL(data.validoHasta || data.vigenciaFin);
 
-^FO115,24^GB120,0,2^FS
+  const precioPrincipal = fmtCLP(precioAhora || precioOferta || precioNormal);
+  const precioNormalFmt = fmtCLP(precioAntes || precioNormal);
+  const precioUnitarioFmt = fmtCLP(precioUnitario || precioNormal);
 
-^FO10,85^A0N,26,26^FD${producto}^FS
-^FO10,115^A0N,26,26^FD${subtitulo}^FS
+  const barcode = ean13 || '';
 
-^FO10,145^A0N,22,22^FDSKU: ${sku}^FS
+  let zpl = '';
 
-^BY2,3,${barcodeHeight}
-^FO10,170^BCN,${barcodeHeight},Y,N,N
-^FD${codigoBarras}^FS
-${showResumenOferta && resumenLines[0] ? `^FO10,${yResumenBase}^A0N,18,18^FD${resumenLines[0]}^FS` : ''}
-${showResumenOferta && resumenLines[1] ? `^FO10,${yResumenBase+20}^A0N,18,18^FD${resumenLines[1]}^FS` : ''}
-${showResumenOferta && resumenLines[2] ? `^FO10,${yResumenBase+40}^A0N,18,18^FD${resumenLines[2]}^FS` : ''}
+  zpl += '^XA\n';
+  zpl += '^CI28\n';
+  zpl += '^LH0,0\n';
+  zpl += '^PR' + pr + '\n';
+  zpl += '^MD' + md + '\n';
 
-^PQ${Math.max(1, parseInt(cantidad, 10) || 1)}
-^XZ
-  `.trim() + '\n';
+  zpl += '^PW400\n';
+  zpl += '^LL320\n';
+
+  zpl += '^FO20,10\n';
+  zpl += '^A0N,26,26\n';
+  zpl += '^FB360,2,0,C\n';
+  zpl += '^FD' + (producto || '') + '\n';
+  zpl += '^FS\n';
+
+  zpl += '^FO20,60\n';
+  zpl += '^A0N,20,20\n';
+  zpl += '^FB360,1,0,C\n';
+  zpl += '^FDPRECIO NORMAL: ' + precioNormalFmt + '\n';
+  zpl += '^FS\n';
+
+  zpl += '^FO20,90\n';
+  zpl += '^A0N,70,70\n';
+  zpl += '^FB360,1,0,C\n';
+  zpl += '^FD' + precioPrincipal + '\n';
+  zpl += '^FS\n';
+
+  zpl += '^FO20,160\n';
+  zpl += '^A0N,18,18\n';
+  zpl += '^FD' + precioUnitarioFmt + '\n';
+  zpl += '^FS\n';
+
+  zpl += '^FO20,180\n';
+  zpl += '^A0N,18,18\n';
+  zpl += '^FDPrecio Unit.\n';
+  zpl += '^FS\n';
+
+  // Barcode
+  zpl += '^BY2,2,' + barcodeHeight + '\n';
+  zpl += '^FO110,190\n';
+  zpl += '^BCN,' + barcodeHeight + ',N,N,N\n';
+  zpl += '^FD' + barcode + '\n';
+  zpl += '^FS\n';
+
+  // EAN debajo
+  zpl += '^FO140,255\n';
+  zpl += '^A0N,22,22\n';
+  zpl += '^FD' + barcode + '\n';
+  zpl += '^FS\n';
+  
+  // SKU
+  zpl += '^FO20,285\n';
+  zpl += '^A0N,20,20\n';
+  zpl += '^FDSKU:' + (sku || '') + '\n';
+  zpl += '^FS\n';
+
+  // Fecha
+  zpl += '^FO220,285\n';
+  zpl += '^A0N,20,20\n';
+  zpl += '^FDVALIDO HASTA: ' + (validoHasta || '') + '\n';
+  zpl += '^FS\n';
+
+  zpl += '^PQ' + Math.max(1, parseInt(cantidad,10) || 1) + '\n';
+  zpl += '^XZ\n';
 
   return zpl;
 }
 
-// --- envío raw por TCP (9100)
+// ------------------------------------------------
+// TCP Print
+// ------------------------------------------------
+
 function sendTcp(raw) {
-  const zebraHost = process.env.ZEBRA_HOST || '192.168.1.50';
-  const zebraPort = parseInt(process.env.ZEBRA_PORT || '9100', 10);
-  return new Promise((resolve, reject) => {
+
+  const host = process.env.ZEBRA_HOST || '192.168.1.50';
+  const port = parseInt(process.env.ZEBRA_PORT || '9100', 10);
+
+  return new Promise(function(resolve,reject){
+
     const client = new net.Socket();
-    client.connect(zebraPort, zebraHost, () => {
-      const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, 'utf8');
-      client.write(buf, () => client.end());
+
+    client.connect(port, host, function(){
+
+      const buf = Buffer.isBuffer(raw)
+        ? raw
+        : Buffer.from(raw,'utf8');
+
+      client.write(buf,function(){ client.end(); });
+
     });
+
     client.on('error', reject);
     client.on('close', resolve);
+
   });
 }
 
-// --- envío RAW a cola Windows (\\host\cola)
+// ------------------------------------------------
+// Windows RAW Print
+// ------------------------------------------------
+
 function sendWindowsRaw(raw) {
-  const sharePath = process.env.ZEBRA_SHARE_PATH; // p.ej. \\localhost\flejes
+
+  const sharePath = process.env.ZEBRA_SHARE_PATH;
+
   if (!sharePath || !sharePath.startsWith('\\\\')) {
-    throw new Error(`sharePath inválido para impresión RAW: "${sharePath}"`);
+    throw new Error('sharePath inválido: ' + sharePath);
   }
-  const tmp = path.join(os.tmpdir(), `label_${Date.now()}.zpl`);
-  fs.writeFileSync(tmp, Buffer.isBuffer(raw) ? raw : Buffer.from(raw, 'utf8'));
 
-  const execCopy = (target) =>
-    new Promise((resolve, reject) => {
-      execFile('cmd.exe', ['/d', '/c', 'copy', '/y', '/b', tmp, target], { windowsHide: true },
-        (err, stdout, stderr) => err ? reject(Object.assign(err, { stdout, stderr })) : resolve(stdout || 'OK'));
+  const tmp = path.join(os.tmpdir(),'label_' + Date.now() + '.zpl');
+
+  fs.writeFileSync(
+    tmp,
+    Buffer.isBuffer(raw) ? raw : Buffer.from(raw,'utf8')
+  );
+
+  const execCopy = function(target){
+    return new Promise(function(resolve,reject){
+
+      execFile(
+        'cmd.exe',
+        ['/d','/c','copy','/y','/b',tmp,target],
+        { windowsHide:true },
+        function(err,stdout){
+          if (err) reject(err);
+          else resolve(stdout || 'OK');
+        }
+      );
+
     });
+  };
 
-  const execPrint = (target) =>
-    new Promise((resolve, reject) => {
-      execFile('cmd.exe', ['/d', '/c', 'print', `/D:${target}`, tmp], { windowsHide: true },
-        (err, stdout, stderr) => err ? reject(Object.assign(err, { stdout, stderr })) : resolve(stdout || 'OK'));
+  return execCopy(sharePath)
+    .finally(function(){
+      fs.unlink(tmp,function(){});
     });
-
-  const dst = sharePath.trim();
-  const dstIp = /^\\\\localhost\\/i.test(dst) ? dst.replace(/^\\\\localhost\\/i, '\\\\127.0.0.1\\') : null;
-
-  return (async () => {
-    try { return `copy: ${await execCopy(dst)}`; }
-    catch {
-      try { if (dstIp) return `copy(ip): ${await execCopy(dstIp)}`; } catch {}
-      return `print: ${await execPrint(dst)}`;
-    }
-  })().finally(() => fs.unlink(tmp, () => {}));
 }
+
+// ------------------------------------------------
+// Envío general
+// ------------------------------------------------
 
 async function sendEtiqueta(raw) {
+
   const mode = (process.env.PRINT_MODE || 'windows-raw').toLowerCase();
+
   if (mode === 'tcp') return sendTcp(raw);
   if (mode === 'windows-raw') return sendWindowsRaw(raw);
-  if (mode === 'mock-zpl' || mode === 'mock-epl') {
-    const outDir = path.join(__dirname, '..', 'mock-prints');
-    fs.mkdirSync(outDir, { recursive: true });
-    const filePath = path.join(outDir, `mock_${Date.now()}.zpl`);
-    fs.writeFileSync(filePath, raw, 'utf8');
-    return { filePath };
+
+  if (mode === 'mock') {
+
+    const outDir = path.join(__dirname,'..','mock-prints');
+    fs.mkdirSync(outDir,{recursive:true});
+
+    const filePath = path.join(outDir,'mock_' + Date.now() + '.zpl');
+
+    fs.writeFileSync(filePath,raw,'utf8');
+
+    return {filePath};
   }
-  throw new Error(`Modo de impresión no soportado: ${mode}`);
+
+  throw new Error('Modo de impresión no soportado: ' + mode);
 }
 
-/** Entrada principal desde rutas */
+// ------------------------------------------------
+// Método principal
+// ------------------------------------------------
+
 async function printEtiquetaOferta(payload) {
+
   const zpl = buildZplEtiqueta(payload);
   return sendEtiqueta(zpl);
+
 }
+
+// ------------------------------------------------
 
 module.exports = {
   buildZplEtiqueta,
   printEtiquetaOferta,
   sendEtiqueta,
   sendWindowsRaw,
-  sendTcp,
+  sendTcp
 };
