@@ -27,7 +27,25 @@ function formatDateCL(dateStr) {
 
   if (!dateStr) return '';
 
+  // Si ya viene en formato chileno DD/MM/YYYY
+  if (typeof dateStr === 'string' && dateStr.includes('/')) {
+
+    const parts = dateStr.split('/');
+
+    if (parts.length === 3) {
+
+      const day = parts[0].padStart(2,'0');
+      const month = parts[1].padStart(2,'0');
+      const year = parts[2];
+
+      return day + '/' + month + '/' + year;
+    }
+  }
+
+  // Si viene como ISO o Date válido
   const d = new Date(dateStr);
+
+  if (isNaN(d.getTime())) return '';
 
   const day = String(d.getDate()).padStart(2,'0');
   const month = String(d.getMonth()+1).padStart(2,'0');
@@ -115,13 +133,13 @@ function buildZplEtiqueta(data) {
 
   // Barcode
   zpl += '^BY2,2,' + barcodeHeight + '\n';
-  zpl += '^FO110,190\n';
+  zpl += '^FO110,185\n';
   zpl += '^BCN,' + barcodeHeight + ',N,N,N\n';
   zpl += '^FD' + barcode + '\n';
   zpl += '^FS\n';
 
   // EAN debajo
-  zpl += '^FO140,255\n';
+  zpl += '^FO140,250\n';
   zpl += '^A0N,22,22\n';
   zpl += '^FD' + barcode + '\n';
   zpl += '^FS\n';
@@ -133,7 +151,7 @@ function buildZplEtiqueta(data) {
   zpl += '^FS\n';
 
   // Fecha
-  zpl += '^FO220,285\n';
+  zpl += '^FO160,285\n';
   zpl += '^A0N,20,20\n';
   zpl += '^FDVALIDO HASTA: ' + (validoHasta || '') + '\n';
   zpl += '^FS\n';

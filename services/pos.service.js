@@ -8,8 +8,17 @@ const rutaMAPRE = path.join("E:", "fasapos", "data", "posmapre.dbf");
 const rutaDPOFE = path.join("E:", "fasapos", "data", "posdpofe.dbf");
 
 // =============================
+// CACHE GLOBAL
+// =============================
+
+let mapProductos = new Map();
+let mapOfertas = new Map();
+let cacheCargando = false;
+
+// =============================
 // Helpers
 // =============================
+
 function cleanStr(s) {
   return (s ?? "").toString().trim();
 }
@@ -19,26 +28,23 @@ function cleanNum(n) {
   return Number.isFinite(v) ? v : 0;
 }
 
-// NORMALIZACIÓN ÚNICA DE SKU
 function normalizeSku(value) {
+
   if (value == null) return null;
 
   let s = String(value).trim();
 
-  // eliminar todo lo que no sea número
   s = s.replace(/\D+/g, "");
-
-  // quitar ceros a la izquierda
   s = s.replace(/^0+/, "");
 
   return s || null;
 }
 
 // =============================
-// Mapear POSMAPRE (maestra)
+// Mapear MAPRE
 // =============================
+
 function mapMAPRE(row) {
-  if (!row) return null;
 
   const sku = normalizeSku(row.MAPCODIN);
   if (!sku) return null;
@@ -49,15 +55,15 @@ function mapMAPRE(row) {
     marca: cleanStr(row.MAPLAB),
     contenido: cleanStr(row.MAPCONCENT),
     ean13: cleanStr(row.MAPBARRA),
-    precioUnitario: cleanNum(row.MAPPREVT),
+    precioUnitario: cleanNum(row.MAPPREVT)
   };
 }
 
 // =============================
-// Mapear POSDPOFE (ofertas)
+// Mapear DPOFE
 // =============================
+
 function mapDPOFE(row) {
-  if (!row) return null;
 
   const sku = normalizeSku(row.DP_DATO);
   if (!sku) return null;
@@ -66,44 +72,83 @@ function mapDPOFE(row) {
     sku,
     precioOferta: cleanNum(row.DP_VALOFER),
     vigenciaInicio: cleanStr(row.DP_FINICIO),
-    vigenciaFin: cleanStr(row.DP_FFIN),
+    vigenciaFin: cleanStr(row.DP_FFIN)
   };
 }
 
 // =============================
-// Leer POSMAPRE
+// Cargar DBF en memoria
 // =============================
-async function getAllMAPRE() {
-  const dbf = await DBFFile.open(rutaMAPRE, { encoding: "cp1252" });
-  const rows = await dbf.readRecords();
 
-  return rows
-    .map(mapMAPRE)
-    .filter(p => p?.sku);
+async function cargarCache() {
+
+  if (cacheCargando) return;
+
+  cacheCargando = true;
+
+  console.log("[POS] Cargando DBF...");
+
+  const start = Date.now();
+
+  mapProductos.clear();
+  mapOfertas.clear();
+
+  // MAPRE
+  const dbfMAPRE = await DBFFile.open(rutaMAPRE, { encoding: "cp1252" });
+
+  let records = await dbfMAPRE.readRecords(1000);
+
+  while (records.length > 0) {
+
+    for (const row of records) {
+
+      const p = mapMAPRE(row);
+
+      if (p) mapProductos.set(p.sku, p);
+    }
+
+    records = await dbfMAPRE.readRecords(1000);
+  }
+
+  // DPOFE
+  const dbfDPOFE = await DBFFile.open(rutaDPOFE, { encoding: "cp1252" });
+
+  records = await dbfDPOFE.readRecords(1000);
+
+  while (records.length > 0) {
+
+    for (const row of records) {
+
+      const o = mapDPOFE(row);
+
+      if (o) mapOfertas.set(o.sku, o);
+    }
+
+    records = await dbfDPOFE.readRecords(1000);
+  }
+
+  const end = Date.now();
+
+  console.log("[POS] MAPRE:", mapProductos.size);
+  console.log("[POS] DPOFE:", mapOfertas.size);
+  console.log("[POS] Cache cargado en", (end - start), "ms");
+
+  cacheCargando = false;
 }
 
 // =============================
-// Leer POSDPOFE
+// Obtener producto
 // =============================
-async function getAllDPOFE() {
-  const dbf = await DBFFile.open(rutaDPOFE, { encoding: "cp1252" });
-  const rows = await dbf.readRecords();
 
-  return rows
-    .map(mapDPOFE)
-    .filter(o => o?.sku);
-}
-
-// =============================
-// Obtener 1 producto por SKU
-// =============================
 async function getProductoPorSku(skuRaw) {
 
+  if (mapProductos.size === 0) {
+    await cargarCache();
+  }
+
   const sku = normalizeSku(skuRaw);
-  console.log('[POS-SERVICE] getProductoPorSku - SKU normalizado:', sku);
 
   if (!sku) {
-    console.log('[POS-SERVICE] SKU inválido');
     return {
       ok: false,
       foundInExcel: false,
@@ -112,70 +157,48 @@ async function getProductoPorSku(skuRaw) {
     };
   }
 
-  const [productos, ofertas] = await Promise.all([
-    getAllMAPRE(),
-    getAllDPOFE()
-  ]);
-
-  console.log('[POS-SERVICE] Cargados MAPRE:', productos.length, 'registros');
-  console.log('[POS-SERVICE] Cargadas DPOFE:', ofertas.length, 'registros');
-
-  const mapProductos = new Map(productos.map(p => [p.sku, p]));
-  const mapOfertas = new Map(ofertas.map(o => [o.sku, o]));
-
   const base = mapProductos.get(sku) || null;
   const ofe = mapOfertas.get(sku) || null;
 
-  console.log('[POS-SERVICE] Encontrado en MAPRE:', !!base);
-  console.log('[POS-SERVICE] Encontrado en DPOFE:', !!ofe);
-  if (base) console.log('[POS-SERVICE] Producto MAPRE:', base);
-  if (ofe) console.log('[POS-SERVICE] Oferta DPOFE:', ofe);
-
-  const foundInExcel = !!base;
-  const foundInDPOFE = !!ofe;
-
   if (!base && !ofe) {
-    console.log('[POS-SERVICE] No encontrado en ninguna fuente');
-    return { ok: true, foundInExcel, foundInDPOFE, producto: null };
+    return {
+      ok: true,
+      foundInExcel: false,
+      foundInDPOFE: false,
+      producto: null
+    };
   }
-
-  const producto = {
-    sku,
-    descripcion: base?.descripcion ?? "",
-    marca: base?.marca ?? "",
-    contenido: base?.contenido ?? "",
-    ean13: base?.ean13 ?? "",
-    imagenUrl: null,
-
-    precioUnitario: cleanNum(base?.precioUnitario),
-    precioOferta: ofe ? cleanNum(ofe.precioOferta) : null,
-
-    vigenciaInicio: ofe?.vigenciaInicio ?? null,
-    vigenciaFin: ofe?.vigenciaFin ?? null,
-  };
-
-  console.log('[POS-SERVICE] Producto final:', producto);
 
   return {
     ok: true,
-    foundInExcel,
-    foundInDPOFE,
-    producto
+    foundInExcel: !!base,
+    foundInDPOFE: !!ofe,
+    producto: {
+      sku,
+      descripcion: base?.descripcion ?? "",
+      marca: base?.marca ?? "",
+      contenido: base?.contenido ?? "",
+      ean13: base?.ean13 ?? "",
+      imagenUrl: null,
+
+      precioUnitario: cleanNum(base?.precioUnitario),
+      precioOferta: ofe ? cleanNum(ofe.precioOferta) : null,
+
+      vigenciaInicio: ofe?.vigenciaInicio ?? null,
+      vigenciaFin: ofe?.vigenciaFin ?? null
+    }
   };
 }
 
 // =============================
-// Obtener varios productos
+// Obtener varios
 // =============================
+
 async function getProductosPorSku(listaSku = []) {
 
-  const [productos, ofertas] = await Promise.all([
-    getAllMAPRE(),
-    getAllDPOFE()
-  ]);
-
-  const mapProductos = new Map(productos.map(p => [p.sku, p]));
-  const mapOfertas = new Map(ofertas.map(o => [o.sku, o]));
+  if (mapProductos.size === 0) {
+    await cargarCache();
+  }
 
   return listaSku
     .map(normalizeSku)
@@ -203,16 +226,29 @@ async function getProductosPorSku(listaSku = []) {
         foundInExcel: !!base,
         foundInDPOFE: !!ofe
       };
+
     })
     .filter(Boolean);
 }
 
 // =============================
+// Recarga autom�tica
+// =============================
+
+setInterval(() => {
+
+  console.log("[POS] Refrescando cache DBF...");
+
+  cargarCache();
+
+}, 5 * 60 * 1000); // cada 5 minutos
+
+// =============================
 // Exports
 // =============================
+
 module.exports = {
-  getAllMAPRE,
-  getAllDPOFE,
   getProductoPorSku,
   getProductosPorSku,
+  cargarCache
 };

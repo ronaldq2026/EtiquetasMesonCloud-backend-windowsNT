@@ -10,14 +10,12 @@ function pick(obj, keys) {
   return out;
 }
 
-// Imprimir directo (7 campos obligatorios + opcionales)
+// Imprimir directo 
 router.post('/api/labels/print', async (req, res) => {
   try {
-    const required = ['precioAntes','precioAhora','producto','subtitulo','sku','codigoBarras','cantidad'];
-    const base = pick(req.body || {}, required);
-    const opts = pick(req.body || {}, ['pr','md','barcodeHeight','precioNormal','precioOferta','descuentoPct','showResumenOferta']);
-    const zpl = buildZplEtiqueta({ ...base, ...opts });
-    const result = await sendEtiqueta(zpl);
+    const payload = req.body;
+    const zpl = buildZplEtiqueta(payload);
+    const result = await sendEtiqueta(zpl);	
     return res.json({ ok: true, result });
   } catch (err) {
     console.error('[labels/print] error:', err);
@@ -28,11 +26,8 @@ router.post('/api/labels/print', async (req, res) => {
 //preview
 router.post('/api/labels/preview', async (req, res) => {
   try {
-
     const payload = req.body;
-
     const zpl = buildZplEtiqueta(payload);
-
     const response = await axios.post(
       "http://api.labelary.com/v1/printers/8dpmm/labels/2x1.5/0/",
       zpl,
@@ -43,15 +38,11 @@ router.post('/api/labels/preview', async (req, res) => {
         responseType: "arraybuffer"
       }
     );
-
     res.set("Content-Type", "image/png");
     return res.send(response.data);
-
   } catch (err) {
-
     console.error("preview error", err);
     res.status(500).json({ ok:false });
-
   }
 });
 
