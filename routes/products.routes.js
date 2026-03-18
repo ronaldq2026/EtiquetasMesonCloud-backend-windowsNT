@@ -1,3 +1,4 @@
+//products.routes.js
 const express = require('express');
 const router = express.Router();
 const posService = require('../services/pos.service');

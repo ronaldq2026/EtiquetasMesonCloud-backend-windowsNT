@@ -186,18 +186,21 @@ router.get('/api/meson/excel/enrich/:sku', async (req, res) => {
 	  ok: true,
 	  foundInExcel: result.foundInExcel,
 	  foundInDPOFE: result.foundInDPOFE,
-	  producto: {
-		sku: p.sku,
-		descripcion: p.descripcion,
-		marca: p.marca,
-		contenido: p.contenido,
-		ean13: p.ean13,
+		producto: {
+		  sku: p.sku,
+		  descripcion: p.descripcion,
+		  marca: p.marca,
+		  contenido: p.contenido,
+		  ean13: p.ean13,
+		  
+		  precioNormal: p.precioNormal,
+		  precioUnitario: p.precioUnitario,
+		  precioOferta: p.precioOferta,
 
-		precioNormal: p.precioUnitario,
-		precioOferta: p.precioOferta,
-		
-		validoHasta: formatDate(p.vigenciaFin)
-	  }
+		  vigenciaInicio: p.vigenciaInicio,
+		  vigenciaFin: p.vigenciaFin,
+		  validoHasta: formatDate(p.vigenciaFin)
+		}
 	});
 
   } catch (err) {
@@ -234,11 +237,9 @@ router.post('/api/print/export-html', async (req, res) => {
     const { buildZplEtiqueta, sendEtiqueta } = require('../services/zebra.service');
 
     const payload = {
-
-      precioAntes: product?.precioUnitario ?? '',
-      precioAhora: product?.precioOferta ?? product?.precioUnitario ?? '',
-
-      producto: product?.descripcion ?? '',
+	  precioAntes: product?.precioNormal ?? '',
+	  precioAhora: product?.precioOferta ?? product?.precioNormal ?? '',
+	  producto: product?.descripcion ?? '',
       subtitulo: product?.marca ?? '',
 
       sku: product?.sku ?? '',

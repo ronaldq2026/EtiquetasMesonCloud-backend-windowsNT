@@ -1,3 +1,4 @@
+//pos.service.js
 const { DBFFile } = require("dbffile");
 const path = require("path");
 
@@ -55,7 +56,10 @@ function mapMAPRE(row) {
     marca: cleanStr(row.MAPLAB),
     contenido: cleanStr(row.MAPCONCENT),
     ean13: cleanStr(row.MAPBARRA),
-    precioUnitario: cleanNum(row.MAPPREVT)
+
+    // ?? NUEVO ORDEN CORRECTO
+    precioNormal: cleanNum(row.MAPPREVT),   // antes precioUnitario
+    precioUnitario: cleanNum(row.MAPREUNI)  // nuevo campo real
   };
 }
 
@@ -121,7 +125,12 @@ async function cargarCache() {
 
       const o = mapDPOFE(row);
 
-      if (o) mapOfertas.set(o.sku, o);
+	  if (o) {
+		  if (!mapOfertas.has(o.sku)) {
+			mapOfertas.set(o.sku, []);
+		  }
+		  mapOfertas.get(o.sku).push(o);
+		}
     }
 
     records = await dbfDPOFE.readRecords(1000);
@@ -134,6 +143,30 @@ async function cargarCache() {
   console.log("[POS] Cache cargado en", (end - start), "ms");
 
   cacheCargando = false;
+}
+
+function elegirMejorOferta(ofertas = []) {
+
+  if (!ofertas.length) return null;
+
+  const hoy = new Date();
+
+  // opcional: filtrar vigentes
+  const vigentes = ofertas.filter(o => {
+    if (!o.vigenciaFin) return true;
+    return new Date(o.vigenciaFin) >= hoy;
+  });
+
+  const lista = vigentes.length ? vigentes : ofertas;
+
+  return lista.reduce((mejor, actual) => {
+    if (!mejor) return actual;
+
+    const a = cleanNum(actual.precioOferta);
+    const b = cleanNum(mejor.precioOferta);
+
+    return a < b ? actual : mejor;
+  }, null);
 }
 
 // =============================
@@ -156,38 +189,41 @@ async function getProductoPorSku(skuRaw) {
       producto: null
     };
   }
+	const base = mapProductos.get(sku) || null;
 
-  const base = mapProductos.get(sku) || null;
-  const ofe = mapOfertas.get(sku) || null;
+	const ofertas = mapOfertas.get(sku) || [];
+	const mejorOferta = elegirMejorOferta(ofertas);
 
-  if (!base && !ofe) {
-    return {
-      ok: true,
-      foundInExcel: false,
-      foundInDPOFE: false,
-      producto: null
-    };
-  }
+	if (!base && ofertas.length === 0) {
+	  return {
+		ok: true,
+		foundInExcel: false,
+		foundInDPOFE: false,
+		producto: null
+	  };
+	}
 
-  return {
-    ok: true,
-    foundInExcel: !!base,
-    foundInDPOFE: !!ofe,
-    producto: {
-      sku,
-      descripcion: base?.descripcion ?? "",
-      marca: base?.marca ?? "",
-      contenido: base?.contenido ?? "",
-      ean13: base?.ean13 ?? "",
-      imagenUrl: null,
+	return {
+	  ok: true,
+	  foundInExcel: !!base,
+	  foundInDPOFE: ofertas.length > 0,
+	  producto: {
+		sku,
+		descripcion: base?.descripcion ?? "",
+		marca: base?.marca ?? "",
+		contenido: base?.contenido ?? "",
+		ean13: base?.ean13 ?? "",
+		imagenUrl: null,
 
-      precioUnitario: cleanNum(base?.precioUnitario),
-      precioOferta: ofe ? cleanNum(ofe.precioOferta) : null,
+		precioNormal: cleanNum(base?.precioNormal),
+		precioUnitario: cleanNum(base?.precioUnitario),
 
-      vigenciaInicio: ofe?.vigenciaInicio ?? null,
-      vigenciaFin: ofe?.vigenciaFin ?? null
-    }
-  };
+		precioOferta: mejorOferta ? cleanNum(mejorOferta.precioOferta) : null,
+
+		vigenciaInicio: mejorOferta?.vigenciaInicio ?? null,
+		vigenciaFin: mejorOferta?.vigenciaFin ?? null
+	  }
+	};
 }
 
 // =============================
@@ -205,28 +241,41 @@ async function getProductosPorSku(listaSku = []) {
     .filter(Boolean)
     .map(sku => {
 
-      const base = mapProductos.get(sku);
-      const ofe = mapOfertas.get(sku);
+      const base = mapProductos.get(sku) || null;
 
-      if (!base && !ofe) return null;
+		const ofertas = mapOfertas.get(sku) || [];
+		const mejorOferta = elegirMejorOferta(ofertas);
 
-      return {
-        sku,
-        descripcion: base?.descripcion ?? "",
-        marca: base?.marca ?? "",
-        contenido: base?.contenido ?? "",
-        ean13: base?.ean13 ?? "",
+		if (!base && ofertas.length === 0) {
+		  return {
+			ok: true,
+			foundInExcel: false,
+			foundInDPOFE: false,
+			producto: null
+		  };
+		}
 
-        precioUnitario: cleanNum(base?.precioUnitario),
-        precioOferta: ofe ? cleanNum(ofe.precioOferta) : null,
+		return {
+		  ok: true,
+		  foundInExcel: !!base,
+		  foundInDPOFE: ofertas.length > 0,
+		  producto: {
+			sku,
+			descripcion: base?.descripcion ?? "",
+			marca: base?.marca ?? "",
+			contenido: base?.contenido ?? "",
+			ean13: base?.ean13 ?? "",
+			imagenUrl: null,
 
-        vigenciaInicio: ofe?.vigenciaInicio ?? null,
-        vigenciaFin: ofe?.vigenciaFin ?? null,
+			precioNormal: cleanNum(base?.precioNormal),
+			precioUnitario: cleanNum(base?.precioUnitario),
 
-        foundInExcel: !!base,
-        foundInDPOFE: !!ofe
-      };
+			precioOferta: mejorOferta ? cleanNum(mejorOferta.precioOferta) : null,
 
+			vigenciaInicio: mejorOferta?.vigenciaInicio ?? null,
+			vigenciaFin: mejorOferta?.vigenciaFin ?? null
+		  }
+		};
     })
     .filter(Boolean);
 }
