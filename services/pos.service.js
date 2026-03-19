@@ -56,7 +56,7 @@ function mapMAPRE(row) {
     marca: cleanStr(row.MAPLAB),
     contenido: cleanStr(row.MAPCONCENT),
     ean13: cleanStr(row.MAPBARRA),
-
+	unidadMedida: cleanStr(row.MAPUDESC), 
     // ?? NUEVO ORDEN CORRECTO
     precioNormal: cleanNum(row.MAPPREVT),   // antes precioUnitario
     precioUnitario: cleanNum(row.MAPREUNI)  // nuevo campo real
@@ -214,7 +214,7 @@ async function getProductoPorSku(skuRaw) {
 		contenido: base?.contenido ?? "",
 		ean13: base?.ean13 ?? "",
 		imagenUrl: null,
-
+		unidadMedida: base?.unidadMedida ?? "", 
 		precioNormal: cleanNum(base?.precioNormal),
 		precioUnitario: cleanNum(base?.precioUnitario),
 
@@ -266,7 +266,7 @@ async function getProductosPorSku(listaSku = []) {
 			contenido: base?.contenido ?? "",
 			ean13: base?.ean13 ?? "",
 			imagenUrl: null,
-
+			unidadMedida: base?.unidadMedida ?? "", 
 			precioNormal: cleanNum(base?.precioNormal),
 			precioUnitario: cleanNum(base?.precioUnitario),
 

@@ -75,6 +75,7 @@ function buildZplEtiqueta(data) {
   const producto = data.producto;
   const sku = data.sku;
   const ean13 = data.ean13;
+  const um = data.unidadMedida || '';
   
   const precioNormal = toNumber(data.precioNormal);
   const precioOferta = toNumber(data.precioOferta);
@@ -90,13 +91,13 @@ function buildZplEtiqueta(data) {
   const pr = data.pr || 2;
   const md = data.md || 5;
 
-  const barcodeHeight = 45;
+  const barcodeHeight = 30;
 
   let validoHasta = formatDateCL(data.validoHasta || data.vigenciaFin);
 
   const precioPrincipal = fmtCLP(precioOferta ?? precioNormal);
   const precioNormalFmt = fmtCLP(precioNormal);
-  const precioUnitarioFmt = fmtCLP(precioUnitario);
+  const precioUnitarioFmt = fmtCLP(precioUnitario);  
 
   console.log('💵 PRECIOS FORMATEADOS:', {
     precioPrincipal,
@@ -111,18 +112,21 @@ function buildZplEtiqueta(data) {
   zpl += '^XA\n';
   zpl += '^CI28\n';
   zpl += '^LH0,0\n';
+  zpl += '^LT-8\n';   //'^LT0\n'; elimina espacio arriba
+  zpl += '^LS0\n';   // elimina corrimiento lateral
+  zpl += '^MMT\n';   // modo correcto (tear-off)
   zpl += '^PR' + pr + '\n';
   zpl += '^MD' + md + '\n';
 
-  zpl += '^PW400\n';
-  zpl += '^LL280\n';
+  zpl += '^PW480\n';
+  zpl += '^LL240\n';
 
   // -------------------------
   // DESCRIPCIÓN
   // -------------------------
   zpl += '^FO20,0\n';
   zpl += '^A0N,24,24\n';
-  zpl += '^FB360,2,0,C\n';
+  zpl += '^FB440,2,0,C\n';      //'^FB360,2,0,C\n';
   zpl += '^FD' + (producto || '') + '\n';
   zpl += '^FS\n';
 
@@ -132,7 +136,7 @@ function buildZplEtiqueta(data) {
   if (precioNormal && precioNormal > 0) {
     zpl += '^FO20,55\n';
     zpl += '^A0N,18,18\n';
-    zpl += '^FB360,1,0,C\n';
+    zpl += '^FB440,1,0,C\n';
     zpl += '^FDPRECIO NORMAL: ' + precioNormalFmt + '\n';
     zpl += '^FS\n';
   }
@@ -142,19 +146,19 @@ function buildZplEtiqueta(data) {
   // -------------------------
   zpl += '^FO20,75\n';
   zpl += '^A0N,55,55\n';
-  zpl += '^FB360,1,0,C\n';
+  zpl += '^FB440,1,0,C\n';
   zpl += '^FD' + precioPrincipal + '\n';
   zpl += '^FS\n';
 
   // -------------------------
   // PRECIO UNITARIO
   // -------------------------
-  zpl += '^FO5,135\n';
-  zpl += '^A0N,18,18\n';
-  zpl += '^FD' + precioUnitarioFmt + '\n';
+  zpl += '^FO5,120\n';
+  zpl += '^A0N,24,24\n';
+  zpl += '^FD' + precioUnitarioFmt + (um ? ' / ' + um : '') + '\n';  
   zpl += '^FS\n';
 
-  zpl += '^FO5,155\n';
+  zpl += '^FO10,145\n';
   zpl += '^A0N,18,18\n';
   zpl += '^FDPrecio Unit.\n';
   zpl += '^FS\n';
@@ -162,8 +166,8 @@ function buildZplEtiqueta(data) {
   // -------------------------
   // CÓDIGO DE BARRAS
   // -------------------------
-  zpl += '^BY2,2,' + barcodeHeight + '\n';
-  zpl += '^FO90,140\n';
+  zpl += '^BY1,2,' + barcodeHeight + '\n';
+  zpl += '^FO180,135\n';
   zpl += '^BCN,' + barcodeHeight + ',N,N,N\n';
   zpl += '^FD' + barcode + '\n';
   zpl += '^FS\n';
@@ -171,20 +175,21 @@ function buildZplEtiqueta(data) {
   // -------------------------
   // EAN
   // -------------------------
-  zpl += '^FO120,190\n';
-  zpl += '^A0N,20,20\n';
+  zpl += '^FO170,170\n';
+  zpl += '^A0N,18,18\n';
+  zpl += '^FB200,1,0,C\n';   // centra debajo del código
   zpl += '^FD' + barcode + '\n';
   zpl += '^FS\n';
 
   // -------------------------
   // SKU + FECHA
   // -------------------------
-  zpl += '^FO20,215\n';
+  zpl += '^FO20,200\n';
   zpl += '^A0N,18,18\n';
   zpl += '^FDSKU:' + (sku || '') + '\n';
   zpl += '^FS\n';
 
-  zpl += '^FO160,215\n';
+  zpl += '^FO200,200\n';
   zpl += '^A0N,18,18\n';
   zpl += '^FDVALIDO HASTA: ' + (validoHasta || '') + '\n';
   zpl += '^FS\n';

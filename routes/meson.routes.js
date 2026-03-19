@@ -192,7 +192,7 @@ router.get('/api/meson/excel/enrich/:sku', async (req, res) => {
 		  marca: p.marca,
 		  contenido: p.contenido,
 		  ean13: p.ean13,
-		  
+		  unidadMedida: p.unidadMedida,
 		  precioNormal: p.precioNormal,
 		  precioUnitario: p.precioUnitario,
 		  precioOferta: p.precioOferta,
