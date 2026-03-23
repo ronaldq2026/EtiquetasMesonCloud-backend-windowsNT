@@ -171,6 +171,10 @@ function getExcelItemBySku(sku) {
   return excelItems.find(it => it.sku === s) || null;
 }
 
+function getAllExcelItems() {
+  return excelItems || [];
+}
+
 function getSummary() {
   return {
     count: allowSet.size,
@@ -186,4 +190,5 @@ module.exports = {
   getSummary,
   searchExcelItems,     // 👈 IMPORTANTE
   getExcelItemBySku,    // 👈 IMPORTANTE
+  getAllExcelItems,
 };
