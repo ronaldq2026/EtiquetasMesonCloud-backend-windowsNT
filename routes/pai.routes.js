@@ -3,7 +3,13 @@ const multer = require('multer');
 const router = express.Router();
 
 const { getSkusCentralizados } = require('../services/oracle.service');
-const { getProductoPorSku } = require('../services/pos.service');
+const { getProductoPorSku,getProductosPorSku } = require('../services/pos.service');
+
+const fs = require('fs');
+const path = require('path');
+
+// ajusta esta ruta a tu server real
+const RUTA_ETIQUETAS = 'E:\\fasapos\\correo\\recibe';
 
 
 const upload = multer({
@@ -92,7 +98,10 @@ router.get('/api/pai/leer-centralizado', async (req, res) => {
         marca: p.marca,
         precioNormal: p.precioNormal,
         precioUnitario: p.precioUnitario,
-        precioOferta: p.precioOferta
+        precioOferta: p.precioOferta,		
+		ean13: p.ean13,
+		unidadMedida: p.unidadMedida,
+		vigenciaFin: p.vigenciaFin
       };
 
       if (p.precioOferta) {
@@ -121,6 +130,113 @@ router.get('/api/pai/leer-centralizado', async (req, res) => {
     return res.status(500).json({
       ok: false,
       message: 'Error leyendo centralizado'
+    });
+  }
+});
+
+router.get('/api/pai/leer-etiquetarf', async (req, res) => {
+  try {
+
+    // =====================================
+    // 1. BUSCAR ÚLTIMO ARCHIVO
+    // =====================================
+    const files = fs.readdirSync(RUTA_ETIQUETAS)
+      .filter(f => f.toLowerCase().startsWith('etiquerf'));
+
+    if (files.length === 0) {
+      return res.status(404).json({ message: 'No hay archivos ETIQUERF' });
+    }
+
+    const latestFile = files.sort().reverse()[0];
+    const fullPath = path.join(RUTA_ETIQUETAS, latestFile);
+
+    // =====================================
+    // 2. LEER ARCHIVO
+    // =====================================
+    const raw = fs.readFileSync(fullPath, 'utf-8');
+
+    const skus = [...new Set(
+      raw
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(Boolean)
+    )];
+
+    // =====================================
+    // 3. BUSCAR PRODUCTOS
+    // =====================================
+    const resultados = await getProductosPorSku(skus);
+
+    const productos = resultados
+      .filter(r => r.producto)
+      .map(r => r.producto);
+
+    // =====================================
+    // 4. CLASIFICAR SIN DUPLICADOS 🔥
+    // =====================================
+    const conOferta = [];
+    const sinOferta = [];
+
+    const seen = new Set(); // 👈 CONTROL GLOBAL
+
+    for (const p of productos) {
+
+      const sku = String(p.sku);
+
+      if (seen.has(sku)) continue; // 🔥 evita duplicados
+      seen.add(sku);
+
+      if (p.precioOferta && p.precioOferta > 0) {
+        conOferta.push(p);
+      } else {
+        sinOferta.push(p);
+      }
+    }
+
+    // =====================================
+    // 5. NO ENCONTRADOS
+    // =====================================
+    const encontrados = new Set(productos.map(p => String(p.sku)));
+
+    const noEncontrados = skus.filter(
+      sku => !encontrados.has(String(sku))
+    );
+
+    console.log("SKUS ARCHIVO:", skus.length);
+    console.log("PRODUCTOS ÚNICOS:", seen.size);
+    console.log("CON OFERTA:", conOferta.length);
+    console.log("SIN OFERTA:", sinOferta.length);
+
+    // =====================================
+    // 6. RESPUESTA
+    // =====================================
+    res.json({
+      total: skus.length,
+      archivo: latestFile,
+      raw,
+
+      conOferta: {
+        count: conOferta.length,
+        items: conOferta
+      },
+
+      sinOferta: {
+        count: sinOferta.length,
+        items: sinOferta
+      },
+
+      noEncontrados: {
+        count: noEncontrados.length,
+        items: noEncontrados
+      }
+    });
+
+  } catch (err) {
+    console.error("❌ ERROR ETIQUERF:", err);
+
+    res.status(500).json({
+      message: 'Error leyendo ETIQUERF',
+      error: err.message
     });
   }
 });

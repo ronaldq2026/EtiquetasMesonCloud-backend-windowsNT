@@ -1,7 +1,7 @@
 // routes/print.routes.js
 const express = require('express');
 const router = express.Router();
-const { buildZplEtiqueta, sendEtiqueta } = require('../services/zebra.service');
+const { buildZplEtiqueta, sendEtiqueta, printEtiquetasBatch,printEtiquetaOferta } = require('../services/zebra.service');
 const axios = require("axios");
 
 function pick(obj, keys) {
@@ -12,14 +12,26 @@ function pick(obj, keys) {
 
 // Imprimir directo 
 router.post('/api/labels/print', async (req, res) => {
+	  console.log('🔥 PRINT CALLED', {
+    time: new Date().toISOString(),
+    isArray: Array.isArray(req.body),
+    items: Array.isArray(req.body) ? req.body.length : 1
+  });
+
   try {
     const payload = req.body;
-    const zpl = buildZplEtiqueta(payload);
-    const result = await sendEtiqueta(zpl);	
-    return res.json({ ok: true, result });
+
+    if (Array.isArray(payload)) {
+      await printEtiquetasBatch(payload);   
+    } else {
+      await printEtiquetaOferta(payload);   
+    }
+
+    res.json({ ok: true });
+
   } catch (err) {
     console.error('[labels/print] error:', err);
-    return res.status(500).json({ ok: false, message: 'Error imprimiendo etiqueta' });
+    res.status(500).json({ ok: false });
   }
 });
 
