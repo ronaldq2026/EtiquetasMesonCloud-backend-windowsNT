@@ -80,40 +80,11 @@ function buildZplEtiqueta(data) {
   }
 }
 
-// ------------------------------------------------
-// Datos base comunes a ambas impresoras
-// ------------------------------------------------
-function buildEtiquetaBase(data) {
-
-  const precioNormal = toNumber(data.precioNormal);
-  const precioOferta = toNumber(data.precioOferta);
-  const precioUnitario = toNumber(data.precioUnitario);
-
-  return {
-    producto: data.producto || '',
-    sku: data.sku || '',
-    ean13: data.ean13 || '',
-    um: data.unidadMedida || '',
-
-    precioNormal,
-    precioOferta,
-    precioUnitario,
-
-    precioNormalFmt: fmtCLP(precioNormal),
-    precioOfertaFmt: fmtCLP(precioOferta),
-    precioPrincipal: fmtCLP(precioOferta ?? precioNormal),
-    precioUnitarioFmt: fmtCLP(precioUnitario),
-
-    validoHasta: formatDateCL(data.validoHasta || data.vigenciaFin),
-
-    pr: data.pr || 2,
-    md: data.md || 5
-  };
-}
-
 function buildZplGC420(data) {
 
-  const d = buildEtiquetaBase(data);
+  const producto = data.producto || '';
+  const precio = fmtCLP(data.precioOferta ?? data.precioNormal);
+  const ean13 = data.ean13 || '';
 
   let zpl = '';
 
@@ -121,58 +92,20 @@ function buildZplGC420(data) {
   zpl += '^CI28\n';
 
   // 🔥 SOLO GC420t
-  zpl += '^MNN\n';
-  zpl += '^MTT\n';
-
+  zpl += '^MNN\n';   // Tear-off
+  zpl += '^MTT\n';   // 👉 GAP MODE (CLAVE)
+  
   zpl += '^PW450\n';
   zpl += '^LL220\n';
   zpl += '^PR3\n';
   zpl += '^MD5\n';
 
-  // Producto
-  zpl += '^FO15,5^A0N,22,22^FB420,2,0,C^FD' +
-         d.producto + '^FS\n';
+  zpl += '^FO15,5^A0N,22,22^FB420,2,0,C^FD' + producto + '^FS\n';
+  zpl += '^FO15,55^A0N,50,50^FB420,1,0,C^FD' + precio + '^FS\n';
 
-  // Precio normal (si existe)
-  if (d.precioNormal && d.precioNormal > 0) {
-    zpl += '^FO15,35^A0N,18,18^FB420,1,0,C^FDPRECIO NORMAL: ' +
-           d.precioNormalFmt + '^FS\n';
-  }
-
-  // Precio principal
-  zpl += '^FO15,55^A0N,50,50^FB420,1,0,C^FD' +
-         d.precioPrincipal + '^FS\n';
-
-  // PRECIO UNITARIO
-  zpl += '^FO5,120\n';
-  zpl += '^A0N,24,24\n';
-  zpl += '^FD' + d.precioUnitarioFmt + (d.um ? ' / ' + d.um : '') + '\n';
-  zpl += '^FS\n';
-
-  zpl += '^FO10,145\n';
-  zpl += '^A0N,18,18\n';
-  zpl += '^FDPrecio Unit.\n';
-  zpl += '^FS\n';		 
-
-  // Código de barras
   zpl += '^BY1,2,50\n';
-  zpl += '^FO140,115^BCN,50,N,N,N^FD' +
-         d.ean13 + '^FS\n';
-
-  // Texto EAN
-  zpl += '^FO120,165^A0N,18,18^FB200,1,0,C^FD' +
-         d.ean13 + '^FS\n';
-
-	// SKU + FECHA
-  zpl += '^FO20,200\n';
-  zpl += '^A0N,18,18\n';
-  zpl += '^FDSKU:' + d.sku + '\n';
-  zpl += '^FS\n';
-
-  zpl += '^FO200,200\n';
-  zpl += '^A0N,18,18\n';
-  zpl += '^FDVALIDO HASTA: ' + d.validoHasta + '\n';
-  zpl += '^FS\n';
+  zpl += '^FO140,115^BCN,50,N,N,N^FD' + ean13 + '^FS\n';
+  zpl += '^FO120,165^A0N,18,18^FB200,1,0,C^FD' + ean13 + '^FS\n';
 
   zpl += '^XZ\n';
 
@@ -181,9 +114,27 @@ function buildZplGC420(data) {
 
 function buildZplZD220(data) {
 
-  const d = buildEtiquetaBase(data);
+  const producto = data.producto || '';
+  const sku = data.sku || '';
+  const ean13 = data.ean13 || '';
+  const um = data.unidadMedida || '';
+
+  const precioNormal = toNumber(data.precioNormal);
+  const precioOferta = toNumber(data.precioOferta);
+  const precioUnitario = toNumber(data.precioUnitario);
+
+  const cantidad = data.cantidad || 1;
+  const pr = data.pr || 2;
+  const md = data.md || 5;
+
   const barcodeHeight = 30;
-  
+
+  const validoHasta = formatDateCL(data.validoHasta || data.vigenciaFin);
+
+  const precioPrincipal = fmtCLP(precioOferta ?? precioNormal);
+  const precioNormalFmt = fmtCLP(precioNormal);
+  const precioUnitarioFmt = fmtCLP(precioUnitario);
+
   let zpl = '';
 
   zpl += '^XA\n';
@@ -195,8 +146,8 @@ function buildZplZD220(data) {
   zpl += '^LS0\n';
 
   // 🔧 VELOCIDAD / OSCURIDAD
-  zpl += '^PR' + d.pr + '\n';
-  zpl += '^MD' + d.md + '\n';
+  zpl += '^PR' + pr + '\n';
+  zpl += '^MD' + md + '\n';
 
   // 🔧 TAMAÑO
   zpl += '^PW480\n';
@@ -208,17 +159,17 @@ function buildZplZD220(data) {
   zpl += '^FO20,0\n';
   zpl += '^A0N,24,24\n';
   zpl += '^FB440,2,0,C\n';
-  zpl += '^FD' + d.producto + '\n';
+  zpl += '^FD' + producto + '\n';
   zpl += '^FS\n';
 
   // -------------------------
   // PRECIO NORMAL
   // -------------------------
-  if (d.precioNormal && d.precioNormal > 0) {
+  if (precioNormal && precioNormal > 0) {
     zpl += '^FO20,55\n';
     zpl += '^A0N,18,18\n';
     zpl += '^FB440,1,0,C\n';
-    zpl += '^FDPRECIO NORMAL: ' + d.precioNormalFmt + '\n';
+    zpl += '^FDPRECIO NORMAL: ' + precioNormalFmt + '\n';
     zpl += '^FS\n';
   }
 
@@ -228,7 +179,7 @@ function buildZplZD220(data) {
   zpl += '^FO20,75\n';
   zpl += '^A0N,55,55\n';
   zpl += '^FB440,1,0,C\n';
-  zpl += '^FD' + d.precioPrincipal + '\n';
+  zpl += '^FD' + precioPrincipal + '\n';
   zpl += '^FS\n';
 
   // -------------------------
@@ -236,7 +187,7 @@ function buildZplZD220(data) {
   // -------------------------
   zpl += '^FO5,120\n';
   zpl += '^A0N,24,24\n';
-  zpl += '^FD' + d.precioUnitarioFmt + (d.um ? ' / ' + d.um : '') + '\n';
+  zpl += '^FD' + precioUnitarioFmt + (um ? ' / ' + um : '') + '\n';
   zpl += '^FS\n';
 
   zpl += '^FO10,145\n';
@@ -250,25 +201,25 @@ function buildZplZD220(data) {
   zpl += '^BY1,2,' + barcodeHeight + '\n';
   zpl += '^FO180,135\n';
   zpl += '^BCN,' + barcodeHeight + ',N,N,N\n';
-  zpl += '^FD' + d.ean13 + '\n';
+  zpl += '^FD' + ean13 + '\n';
   zpl += '^FS\n';
 
   // EAN TEXTO
   zpl += '^FO170,170\n';
   zpl += '^A0N,18,18\n';
   zpl += '^FB200,1,0,C\n';
-  zpl += '^FD' + d.ean13 + '\n';
+  zpl += '^FD' + ean13 + '\n';
   zpl += '^FS\n';
 
   // SKU + FECHA
   zpl += '^FO20,200\n';
   zpl += '^A0N,18,18\n';
-  zpl += '^FDSKU:' + d.sku + '\n';
+  zpl += '^FDSKU:' + sku + '\n';
   zpl += '^FS\n';
 
   zpl += '^FO200,200\n';
   zpl += '^A0N,18,18\n';
-  zpl += '^FDVALIDO HASTA: ' + d.validoHasta + '\n';
+  zpl += '^FDVALIDO HASTA: ' + validoHasta + '\n';
   zpl += '^FS\n';
 
   zpl += '^XZ\n';
