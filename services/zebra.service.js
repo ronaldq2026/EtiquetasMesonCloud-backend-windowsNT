@@ -1,5 +1,5 @@
 // services/zebra.service.js
-// Zebra ZD220t - GC420T  - 60x30 mm
+// Zebra ZD220t - GC420T  - 60x32 mm
 
 const net = require('net');
 const fs = require('fs');
@@ -119,32 +119,27 @@ function buildZplGC420(data) {
 
   zpl += '^XA\n';
   zpl += '^CI28\n';
-
-  // 🔥 SOLO GC420t
-  zpl += '^MNN\n';
-  zpl += '^MTT\n';
-
-  zpl += '^PW450\n';
-  zpl += '^LL220\n';
+  zpl += '^LH32,0\n';   // ✅ Mueve todo a la derecha
+  zpl += '^LT0\n';    // 🔥 SUBE todo, elimina espacio arriba
   zpl += '^PR3\n';
   zpl += '^MD5\n';
 
   // Producto
-  zpl += '^FO15,5^A0N,22,22^FB420,2,0,C^FD' +
+  zpl += '^FO10,8^A0N,22,22^FB400,2,0,C^FD' +
          d.producto + '^FS\n';
 
   // Precio normal (si existe)
   if (d.precioNormal && d.precioNormal > 0) {
-    zpl += '^FO15,35^A0N,18,18^FB420,1,0,C^FDPRECIO NORMAL: ' +
+    zpl += '^FO20,55^A0N,18,18^FB400,1,0,C^FDPRECIO NORMAL: ' +     //zpl += '^FO15,45^A0N,18,18^FB400,1,0,C^FDPRECIO NORMAL: ' +
            d.precioNormalFmt + '^FS\n';
   }
 
-  // Precio principal
-  zpl += '^FO15,55^A0N,50,50^FB420,1,0,C^FD' +
+  // Precio OFERTA
+  zpl += '^FO0,80^A0N,50,50^FB400,1,0,C^FD' +
          d.precioPrincipal + '^FS\n';
 
   // PRECIO UNITARIO
-  zpl += '^FO5,120\n';
+  zpl += '^FO10,120\n';
   zpl += '^A0N,24,24\n';
   zpl += '^FD' + d.precioUnitarioFmt + (d.um ? ' / ' + d.um : '') + '\n';
   zpl += '^FS\n';
@@ -155,21 +150,21 @@ function buildZplGC420(data) {
   zpl += '^FS\n';		 
 
   // Código de barras
-  zpl += '^BY1,2,50\n';
-  zpl += '^FO140,115^BCN,50,N,N,N^FD' +
+  zpl += '^BY1,2,45\n';
+  zpl += '^FO160,120^BCN,45,N,N,N^FD' +
          d.ean13 + '^FS\n';
 
   // Texto EAN
-  zpl += '^FO120,165^A0N,18,18^FB200,1,0,C^FD' +
+  zpl += '^FO160,170^A0N,18,18^FB200,1,0,C^FD' +
          d.ean13 + '^FS\n';
 
 	// SKU + FECHA
-  zpl += '^FO20,200\n';
+  zpl += '^FO10,190\n';
   zpl += '^A0N,18,18\n';
   zpl += '^FDSKU:' + d.sku + '\n';
   zpl += '^FS\n';
 
-  zpl += '^FO200,200\n';
+  zpl += '^FO170,190\n';
   zpl += '^A0N,18,18\n';
   zpl += '^FDVALIDO HASTA: ' + d.validoHasta + '\n';
   zpl += '^FS\n';
@@ -200,7 +195,7 @@ function buildZplZD220(data) {
 
   // 🔧 TAMAÑO
   zpl += '^PW480\n';
-  zpl += '^LL240\n';
+  zpl += '^LL256\n';
 
   // -------------------------
   // DESCRIPCIÓN
@@ -352,7 +347,6 @@ async function printEtiquetaOferta(payload) {
   return sendEtiqueta(zpl);
 }
 
-// 🔥 MASIVO (LA SOLUCIÓN)
 // 🔥 MASIVO (ZPL separado por modelo)
 async function printEtiquetasBatch(productos) {
 
@@ -367,8 +361,9 @@ async function printEtiquetasBatch(productos) {
       zpl += '^XA\n';
       zpl += '^MNN\n';    // Tear-Off
       zpl += '^MTT\n';    // ✅ Media Tracking (GAP) SOLO GC420T
-      zpl += '^PW450\n';  // Ancho GC420T
-      zpl += '^LL220\n';  // Alto GC420T
+      zpl += '^PW480\n';  // Ancho GC420T
+      zpl += '^LL256\n';  // Alto GC420T
+	  zpl += '^JUS\n';   // Reset media sensing
       zpl += '^XZ\n';
       break;
 
@@ -379,8 +374,9 @@ async function printEtiquetasBatch(productos) {
     default:
       zpl += '^XA\n';
       zpl += '^MNN\n';    // Tear-Off
-      zpl += '^PW480\n';  // Ancho ZD220T
-      zpl += '^LL240\n';  // Alto ZD220T
+      //zpl += '^PW480\n';  // Ancho ZD220T
+      //zpl += '^LL256\n';  // Alto ZD220T
+	  //zpl += '^JUS\n';   // Reset media sensing
       zpl += '^XZ\n';
       break;
   }
