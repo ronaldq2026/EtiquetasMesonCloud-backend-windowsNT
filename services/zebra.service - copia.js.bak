@@ -140,10 +140,7 @@ async function printEtiquetasBatch(productos) {
 
     for (let i = 0; i < qty; i++) {
       const zpl = buildEtiqueta(p);
-      await sendWindowsRaw(zpl);   // ✅ enviar una etiqueta a la vez	  
-	  
-      // ⏳ DELAY CRÍTICO PARA GC420t
-      await new Promise(resolve => setTimeout(resolve, 120));
+      await sendWindowsRaw(zpl);   // ✅ enviar una etiqueta a la vez
     }
   }
 }
@@ -159,8 +156,6 @@ async function printEtiquetas(payload) {
   for (let i = 0; i < qty; i++) {
     const zpl = buildEtiqueta(payload);
     await sendWindowsRaw(zpl);
-	
-	await new Promise(resolve => setTimeout(resolve, 120));  //GC420t
   }
 }
 

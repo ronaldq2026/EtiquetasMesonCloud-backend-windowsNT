@@ -14,10 +14,11 @@ const posService = require("./services/pos.service");
 
 const productsRoutes = require('./routes/products.routes');
 
-
-
 app.use(cors());
 app.use(express.json());
+
+const accesosRoutes = require('./routes/accesos.routes');
+app.use('/api/accesos', accesosRoutes);
 
 // 🔐 middleware auth
 app.use((req, res, next) => {
