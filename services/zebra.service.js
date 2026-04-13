@@ -19,7 +19,7 @@ const PRINTER_SHARE =
 // ------------------------------------------------
 function toNumber(val) {
   if (val === null || val === undefined) return null;
-  return Number(String(val).replace(/\./g,'').replace(',','.')) || null;
+  return typeof val === 'number' ? val : Number(val);
 }
 
 function fmtCLP(val) {

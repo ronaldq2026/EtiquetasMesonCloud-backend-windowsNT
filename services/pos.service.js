@@ -48,7 +48,13 @@ function normalizeSku(value) {
 function mapMAPRE(row) {
 
   const sku = normalizeSku(row.MAPCODIN);
-  if (!sku) return null;
+  if (!sku) return null;  
+  
+ // unidad de medida  20260402 mlepin
+  let unidad = cleanStr(row.MAPUDESC);
+  if (unidad === "ST") {
+    unidad = "UNIDAD";
+  }
 
   return {
     sku,
@@ -56,8 +62,7 @@ function mapMAPRE(row) {
     marca: cleanStr(row.MAPLAB),
     contenido: cleanStr(row.MAPCONCENT),
     ean13: cleanStr(row.MAPBARRA),
-	unidadMedida: cleanStr(row.MAPUDESC), 
-    // ?? NUEVO ORDEN CORRECTO
+	unidadMedida: unidad,   //cleanStr(row.MAPUDESC),     
     precioNormal: cleanNum(row.MAPPREVT),   // antes precioUnitario
     precioUnitario: cleanNum(row.MAPREUNI)  // nuevo campo real
   };
