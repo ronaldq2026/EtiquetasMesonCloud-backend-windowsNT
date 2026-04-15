@@ -1,3 +1,5 @@
+process.env.PATH = 'C:\\oracle\\instantclient_19_30;' + process.env.PATH;
+
 const oracledb = require('oracledb');
 
 // 🔥 SOLO en servidor (modo real)
