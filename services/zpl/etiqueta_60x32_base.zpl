@@ -8,8 +8,8 @@
 ^LT0
 ^LS0
 
-^PR4,4
-~SD15
+^PR2
+~SD25
 
 ^FX ============================
 ^FX PRODUCTO (2 líneas)
