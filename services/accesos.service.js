@@ -82,6 +82,11 @@ async function loginUsuario(username, password) {
   const mensaje = getXmlTagValue(innerXml, "Mensaje");
   const idLogin = getXmlTagValue(innerXml, "IdUsuario");
 
+  if (codigo === "5" || codigo === "6") {
+    console.warn(`[ACCESOS] Login_Usuario Código ${codigo} – ${mensaje}`);
+    return { idLogin, passwordChangeRequired: true, codigo, mensaje };
+  }
+
   if (codigo !== "0") {
     console.warn("[ACCESOS] Login_Usuario FALLÓ");
     console.warn(`[ACCESOS] Motivo: ${mensaje}`);
@@ -91,7 +96,7 @@ async function loginUsuario(username, password) {
   console.log("[ACCESOS] Login_Usuario OK");
   console.log(`[ACCESOS] pIdLogin generado: ${idLogin}`);
 
-  return idLogin;
+  return { idLogin, passwordChangeRequired: false };
 }
 
 /* =====================================================
@@ -132,26 +137,120 @@ async function obtenerMenu(pIdLogin) {
 }
 
 /* =====================================================
+   Helper: detectar si el XML contiene tit="Cargar PAI"
+   ===================================================== */
+
+function checkCanUploadPAI(menuXml) {
+  if (!menuXml) return false;
+  return /tit\s*=\s*["']Cargar\s+PAI["']/i.test(menuXml);
+}
+
+/* =====================================================
+   Paso 3: CambioPWD_Usuario (wsAccesos)
+   ===================================================== */
+
+async function cambioPassword(pIdLogin, passwordActual, passwordNueva) {
+  const maskValue = (value = "") => {
+    const text = String(value ?? "");
+    return text.length <= 2 ? "*".repeat(text.length) : `${text[0]}***${text[text.length - 1]}`;
+  };
+  console.log(`[ACCESOS] cambioPassword pIdLogin recibido: ${pIdLogin}`);
+  console.log(`[ACCESOS] cambioPassword password actual length: ${String(passwordActual ?? "").length}`);
+  console.log(`[ACCESOS] cambioPassword password nueva length: ${String(passwordNueva ?? "").length}`);
+  const soap = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <CambioPWD_Usuario xmlns="http://www.fasa.cl/">
+      <LOGINacceso>${WS_LOGIN}</LOGINacceso>
+      <PWDacceso>${WS_PWD}</PWDacceso>
+      <pIdLogin>${pIdLogin}</pIdLogin>
+      <pPWDactual>${passwordActual}</pPWDactual>
+      <pPWDnueva>${passwordNueva}</pPWDnueva>
+    </CambioPWD_Usuario>
+  </soap:Body>
+</soap:Envelope>`;
+  console.log("[ACCESOS] CambioPWD_Usuario XML incluye LOGINacceso:", soap.includes("<LOGINacceso>"));
+  console.log("[ACCESOS] CambioPWD_Usuario XML incluye PWDacceso:", soap.includes("<PWDacceso>"));
+  const soapLogged = soap
+    .replace(`<pPWDactual>${passwordActual}</pPWDactual>`, `<pPWDactual>${maskValue(passwordActual)}</pPWDactual>`)
+    .replace(`<pPWDnueva>${passwordNueva}</pPWDnueva>`, `<pPWDnueva>${maskValue(passwordNueva)}</pPWDnueva>`);
+
+  console.log("[ACCESOS] Cambiando contraseña...");
+  console.log("[ACCESOS] SOAP CambioPWD_Usuario generado:", soapLogged);
+
+  const resp = await axios.post(WS_ACCESOS_URL, soap, {
+    headers: {
+      "Content-Type": "text/xml; charset=utf-8",
+      SOAPAction: "http://www.fasa.cl/CambioPWD_Usuario"
+    }
+  });
+
+  const responseXml = decodeHtmlEntities(resp.data);
+  console.log("[ACCESOS] Respuesta SOAP completa CambioPWD_Usuario:", responseXml);
+  const innerXml = getXmlTagValue(responseXml, "CambioPWD_UsuarioResult");
+  const codigo = getXmlTagValue(innerXml, "Codigo");
+  const mensaje = getXmlTagValue(innerXml, "Mensaje");
+
+  if (codigo !== "0") {
+    console.error("[ACCESOS] CambioPWD_Usuario FALLÓ:", mensaje);
+    throw new Error(mensaje || "Error al cambiar contraseña");
+  }
+
+  console.log("[ACCESOS] Contraseña cambiada exitosamente");
+  return true;
+}
+
+/* =====================================================
    Login completo (usuario + aplicación)
    ===================================================== */
 
-async function loginConAplicacion(username, password) {
+async function loginConAplicacion(username, password, codAplicacion, newPassword) {
   // 1️⃣ Login técnico + usuario
-  const pIdLogin = await loginUsuario(username, password);
+  const loginResult = await loginUsuario(username, password);
+  const { idLogin, passwordChangeRequired, codigo, mensaje: pwMensaje } = loginResult;
 
-  // 2️⃣ Validar acceso a aplicación vía menú
-  const menuXml = await obtenerMenu(pIdLogin);
+  // 2️⃣ Si requiere cambio y recibimos nueva clave → cambiar y reintentar
+  if (passwordChangeRequired && newPassword) {
+    await cambioPassword(idLogin, password, newPassword);
+    const retryResult = await loginUsuario(username, newPassword);
+    const newIdLogin = retryResult.idLogin;
+    const menuXml = await obtenerMenu(newIdLogin);
+    return {
+      ok: true,
+      mensaje: "Acceso concedido",
+      pIdLogin: newIdLogin,
+      codAplicacion: COD_APLICACION,
+      menuXml,
+      canUploadPAI: checkCanUploadPAI(menuXml)
+    };
+  }
 
+  // 3️⃣ Si requiere cambio y NO hay nueva clave → informar al frontend
+  if (passwordChangeRequired) {
+    return {
+      ok: true,
+      passwordChangeRequired: true,
+      codigo,
+      pIdLogin: idLogin,
+      codAplicacion: COD_APLICACION,
+      mensajeCambioClave: pwMensaje
+    };
+  }
+
+  // 4️⃣ Flujo normal
+  const menuXml = await obtenerMenu(idLogin);
   return {
     ok: true,
     mensaje: "Acceso concedido",
-    pIdLogin,
+    pIdLogin: idLogin,
     codAplicacion: COD_APLICACION,
-    menuXml
+    menuXml,
+    canUploadPAI: checkCanUploadPAI(menuXml)
   };
 }
 
 module.exports = {
-  loginConAplicacion
+  loginConAplicacion,
+  cambioPassword
 };
 ``
