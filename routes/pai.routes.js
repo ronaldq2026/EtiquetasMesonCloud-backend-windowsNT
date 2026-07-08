@@ -20,7 +20,7 @@ const upload = multer({
 router.post('/api/pai/cargar-excel', upload.single('file'), async (req, res) => {
   try {
     const { parseAndBuildAllowlist, getAllExcelItems } = require('../services/meson-excel.service');
-    const { insertarSkuBatch } = require('../services/oracle.service');
+    const { insertarSkuBatch, limpiarDiaActual } = require('../services/oracle.service');
 
     // ✅ VALIDAR ARCHIVO
     if (!req.file) {
@@ -53,7 +53,10 @@ router.post('/api/pai/cargar-excel', upload.single('file'), async (req, res) => 
       });
     }
 
-    // 🔥 3. INSERTAR EN ORACLE
+    // 🔥 3. LIMPIAR REGISTROS DEL DÍA ACTUAL
+    await limpiarDiaActual();
+
+    // 🔥 4. INSERTAR EN ORACLE
     const skus = items.map(i => i.sku);
 
     const insertados = await insertarSkuBatch(skus);
