@@ -9,6 +9,13 @@ const rutaMAPRE = path.join("E:", "fasapos", "data", "posmapre.dbf");
 const rutaDPOFE = path.join("E:", "fasapos", "data", "posdpofe.dbf");
 
 // =============================
+// Constantes
+// =============================
+
+// Codigo de etiqueta de la mecanica "precio fijo" en POSDPOFE (etiqueta amarilla)
+const COD_ETI_PRECIO_FIJO = "217";
+
+// =============================
 // CACHE GLOBAL
 // =============================
 
@@ -130,7 +137,7 @@ async function cargarCache() {
 
       const o = mapDPOFE(row);
 
-	  if (o) {
+	  if (o && cleanStr(row.DP_COD_ETI) === COD_ETI_PRECIO_FIJO) {
 		  if (!mapOfertas.has(o.sku)) {
 			mapOfertas.set(o.sku, []);
 		  }
