@@ -41,14 +41,9 @@ async function insertarSkuBatch(skus = []) {
   let count = 0;
 
   try {
-    // 🔥 dedupe: misma fecha + mismo SKU = un solo registro
-    const unicos = [...new Set(
-      (skus || [])
-        .map(s => s == null ? '' : String(s).trim())
-        .filter(Boolean)
-    )];
+    for (const sku of skus) {
 
-    for (const sku of unicos) {
+      if (!sku) continue; // 🛡️ evita nulls
 
       await conn.execute(
         `BEGIN INTERPRETECORP_OWN.PKG_PAI_SKU.insertar_sku(:sku); END;`,

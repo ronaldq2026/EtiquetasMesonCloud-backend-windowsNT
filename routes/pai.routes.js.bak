@@ -4,7 +4,6 @@ const router = express.Router();
 
 const { getSkusCentralizados } = require('../services/oracle.service');
 const { getProductoPorSku,getProductosPorSku } = require('../services/pos.service');
-const { toNumericSku } = require('../utils/sku');
 
 const fs = require('fs');
 const path = require('path');
@@ -57,8 +56,8 @@ router.post('/api/pai/cargar-excel', upload.single('file'), async (req, res) => 
     // 🔥 3. LIMPIAR REGISTROS DEL DÍA ACTUAL
     await limpiarDiaActual();
 
-    // 🔥 4. INSERTAR EN ORACLE (sin duplicar el mismo SKU en la misma carga)
-    const skus = [...new Set(items.map(i => i.sku))];
+    // 🔥 4. INSERTAR EN ORACLE
+    const skus = items.map(i => i.sku);
 
     const insertados = await insertarSkuBatch(skus);
 
@@ -241,91 +240,6 @@ router.get('/api/pai/leer-etiquetarf', async (req, res) => {
     res.status(500).json({
       message: 'Error leyendo ETIQUERF',
       error: err.message
-    });
-  }
-});
-
-// =========================================
-// Búsqueda manual (universo = PAI_SKU vigente)
-// =========================================
-
-function formatSearchDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '';
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
-
-router.get('/api/pai/buscar-manual', async (req, res) => {
-  try {
-    const term = String(req.query.q ?? req.query.term ?? '').trim();
-
-    if (!term) {
-      return res.json({ ok: true, universe: 0, count: 0, items: [] });
-    }
-
-    // 1. UNIVERSO = carga vigente de PAI_SKU (MAX fecha_carga)
-    const skus = await getSkusCentralizados();
-
-    if (!skus || skus.length === 0) {
-      return res.json({ ok: true, universe: 0, count: 0, items: [] });
-    }
-
-    // 2. CRUCE CON POS EN LOTE (una sola llamada + cache DBF, sin N+1)
-    const resultados = await getProductosPorSku(skus);
-
-    // 3. NORMALIZAR CRITERIO (case-insensitive + tolera ceros a la izquierda)
-    const t = term.toLowerCase();
-    const tDigits = toNumericSku(term); // "0000094397" -> "94397"
-
-    // 4. FILTRAR SOLO SOBRE EL UNIVERSO PAI
-    const items = resultados
-      .filter(r => r.producto)
-      .map(r => {
-        const p = r.producto;
-        return {
-          sku: p.sku,
-          descripcion: p.descripcion || '',
-          marca: p.marca || '',
-          contenido: p.contenido || '',
-          ean13: p.ean13 || '',
-          unidadMedida: p.unidadMedida || '',
-          precioNormal: p.precioNormal ?? 0,
-          precioUnitario: p.precioUnitario ?? 0,
-          precioOferta: p.precioOferta ?? null,
-          vigenciaInicio: p.vigenciaInicio ?? null,
-          vigenciaFin: p.vigenciaFin ?? null,
-          validoHasta: formatSearchDate(p.vigenciaFin),
-          foundInDPOFE: !!r.foundInDPOFE
-        };
-      })
-      .filter(it => {
-        const desc = it.descripcion.toLowerCase();
-        const marca = it.marca.toLowerCase();
-
-        if (desc.includes(t) || marca.includes(t)) return true;
-
-        if (tDigits) {
-          if (it.sku.includes(tDigits)) return true;
-          if (it.ean13 && it.ean13.includes(tDigits)) return true;
-        }
-
-        return false;
-      });
-
-    return res.json({
-      ok: true,
-      universe: skus.length,
-      count: items.length,
-      items
-    });
-
-  } catch (err) {
-    console.error('❌ Error buscar-manual:', err);
-
-    return res.status(500).json({
-      ok: false,
-      message: err.message
     });
   }
 });
